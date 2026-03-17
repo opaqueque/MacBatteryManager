@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { homeDir, join } from '@tauri-apps/api/path'
 import type { ScheduleConfig } from './types'
 
 // 当前电池状态
@@ -70,12 +71,20 @@ async function getBatteryStatus() {
   }
 }
 
-// 保存配置
+// 保存配置并安装守护进程
 async function saveSchedule() {
   loading.value = true
   try {
+    // 第一步：保存配置到用户配置目录
     await invoke('save_schedule', { config: schedule.value })
-    showMessage('课表配置已保存')
+
+    // 第二步：获取配置文件的绝对路径
+    const home = await homeDir()
+    const configPath = await join(home, '.config', 'smart-battery-app', 'schedule.json')
+
+    // 第三步：安装并启动守护进程
+    const result = await invoke<string>('install_and_start_daemon', { configPath })
+    showMessage(result)
   } catch (error) {
     showMessage(String(error), 'error')
   } finally {
@@ -90,19 +99,6 @@ async function loadSchedule() {
     schedule.value = config
   } catch (error) {
     console.error('加载配置失败:', error)
-  }
-}
-
-// 生成定时脚本
-async function generateScript() {
-  loading.value = true
-  try {
-    const result = await invoke<string>('generate_scheduler_script')
-    showMessage(result)
-  } catch (error) {
-    showMessage(String(error), 'error')
-  } finally {
-    loading.value = false
   }
 }
 
@@ -219,22 +215,13 @@ onMounted(async () => {
         </div>
 
         <!-- 操作按钮 -->
-        <div class="flex gap-2">
-          <button
-            @click="saveSchedule"
-            :disabled="loading"
-            class="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            保存配置
-          </button>
-          <button
-            @click="generateScript"
-            :disabled="loading"
-            class="px-4 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            生成脚本
-          </button>
-        </div>
+        <button
+          @click="saveSchedule"
+          :disabled="loading"
+          class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          保存并应用计划
+        </button>
       </div>
 
       <!-- 消息提示 -->
